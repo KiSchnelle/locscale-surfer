@@ -4,7 +4,7 @@ LocScale-SURFER is a [ChimeraX](https://www.cgl.ucsf.edu/chimerax/) bundle for e
 
 ![Overview of LocScale-SURFER](./src/images/figure_1-01.png)
 
-Note, there are two ways to speed up the computation. One is to provide a mask which restricts the prediction of detergent micelle to the region of interest. The other is to use a GPU for computation. By default, the tool uses a GPU if available. 
+### What does LocScale-SURFER do?
 
 <div style="display: flex; flex-direction: column; align-items: left;">
   <div class="c-compare" style="--value:50%; position: relative; width: 400px; height: 333px; overflow: hidden;">
