@@ -78,6 +78,7 @@ extra:
 nav:
   - Introduction: index.md
   - Install: install.md
+  - Tutorial: tutorial.md
   - About: about.md
 
 plugins:
