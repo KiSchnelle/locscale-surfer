@@ -26,4 +26,4 @@ LocScale-SURFER is a [ChimeraX](https://www.cgl.ucsf.edu/chimerax/) bundle for e
 
 ### How do I use it?
 
-`LocScale-SURFER` is available as a ChimeraX bundle. Just download and [install](install.md) it and follow the [instructions](tutorial.md). While LocScale-SURFER has been designed to work with `LocScale` feature-enhanced maps, it has been trained on unmodified maps and its segmentation and removal procedure should therefore also work for maps obtained with other post-processing software.
+`LocScale-SURFER` is available as a ChimeraX bundle. Just download and [install](install.md) it and follow the [instructions](tutorial.md). While LocScale-SURFER has been designed to work with `LocScale` feature-enhanced maps, it has been trained on unmodified maps and its segmentation and removal procedure should therefore also work for both unmodified maps or maps obtained with other post-processing software.
