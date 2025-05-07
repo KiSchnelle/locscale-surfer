@@ -1,4 +1,4 @@
-LocScale-SURFER has been developed by Alok Bharadwaj, Lotte Verbeek and Arjen Jakobi at the Kavli Institute of Nanoscience Delft.
+LocScale-SURFER has been developed by Alok Bharadwaj, Lotte Veerbeek and Arjen Jakobi at the Kavli Institute of Nanoscience Delft.
 
 LoScale-SURFER is using code from a number of open-source projects.
 
