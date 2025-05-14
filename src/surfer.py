@@ -103,9 +103,7 @@ def predict(
         print(f'Using GPU: {gpu_ids}')
         model = torch.nn.DataParallel(model, device_ids=["cuda:" + str(gpu_id) for gpu_id in gpu_ids])
     elif device == 'cpu':
-        print('Using CPU.')  
-        model = torch.nn.DataParallel(model, map_location=device)
-    
+        print('Using CPU.')      
     use_gpu = torch.cuda.is_available()
   
     checkpoint = torch.load(model_state_path, map_location=device)
@@ -119,10 +117,12 @@ def predict(
     
     model.load_state_dict(new_state_dict)
 
+    model = model.to(device)
+    model.eval()
+    
     if use_gpu:
         torch.cuda.empty_cache()
-        model = model.to(device)
-    model.eval()
+    
 
     # Make prediction
     prediction = []

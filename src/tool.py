@@ -9,6 +9,9 @@ from Qt.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QDoubleSpinBo
 from chimerax.map import Volume
 from chimerax.map_data import ArrayGridData
 from chimerax.map import volume_from_grid_data
+from Qt.QtWidgets import QSlider, QCheckBox
+from Qt.QtCore import Qt
+
 import torch 
 from .surfer import predict
 
@@ -23,7 +26,7 @@ class SegmentMapTool(ToolInstance):
         super().__init__(session, tool_name)
         self.display_name = "LocScale-SURFER"
         self.tool_window = MainToolWindow(self)
-
+        self.show_step2 = False
         parent = self.tool_window.ui_area
         layout = vertical_layout(parent, margins=(5,0,0,0))
         self.log = session.logger
@@ -47,12 +50,17 @@ class SegmentMapTool(ToolInstance):
         self.tool_window.manage(placement="side")
 
         # Initially disable Step 2 until segmentation is complete.
-        self._step2_frame.setEnabled(False)
+        self._control_step2_display(self.show_step2)
         # The segmentation volume menu is initially disabled.
-        self._segmentation_menu.setEnabled(False)
+        #self._segmentation_menu.setEnabled(False)
         self.segmented_map = None  # will hold the segmentation array
         self._segmentation_volume = None  # will hold the segmentation volume
+        self._new_target_map_volume = None # will hold the new target map volume (without detergent)
 
+    def _control_step2_display(self, display):
+        # Enable or disable the display of Step 2 based on the segmentation completion.
+        self._step2_frame.setEnabled(display)
+    
     def _create_pipeline_panel(self, parent):
         panel = QFrame(parent)
         main_layout = vertical_layout(panel, margins=(0,0,0,0))
@@ -126,8 +134,7 @@ class SegmentMapTool(ToolInstance):
         self._target_map_menu = ModelMenuButton(self.session, class_filter=Volume,
                                                 no_value_button_text="No model chosen",
                                                 autoselect="none")
-        #if vertical_list:
-        #    self._target_map_menu.value = vertical_list[0]
+
         self._target_map_menu.value_changed.connect(self._object_chosen)
         hlayout2.addWidget(self._target_map_menu)
         hlayout2.addStretch(1)
@@ -175,7 +182,31 @@ class SegmentMapTool(ToolInstance):
         remove_layout.addStretch(1)
         step2_layout.addWidget(hframe_remove)
 
+        # "Toggle view" button in Step 2.
+        hframe_toggle = QFrame(self._step2_frame)
+        toggle_layout = QHBoxLayout(hframe_toggle)
+        toggle_layout.setContentsMargins(0,0,0,0)
+        toggle_layout.setSpacing(10)
+        
+        hide_membrane_label = QLabel("Hide membrane", hframe_toggle)
+        hide_membrane_label.setToolTip("Hide membrane")
+        show_membrane_label = QLabel("Show membrane", hframe_toggle)
+        show_membrane_label.setToolTip("Show membrane")
+        self._toggle_slider = QSlider(Qt.Horizontal, hframe_toggle)
+        self._toggle_slider.setRange(0, 1)
+        self._toggle_slider.setTickPosition(QSlider.TicksBelow)
+        self._toggle_slider.setTickInterval(1)
+        self._toggle_slider.setToolTip("<- Hide membrane | Show membrane ->")
+        self._toggle_slider.valueChanged.connect(lambda v: self._toggle_display(v == 1))
+
+        toggle_layout.addWidget(hide_membrane_label)
+        toggle_layout.addWidget(self._toggle_slider)
+        toggle_layout.addWidget(show_membrane_label)
+        toggle_layout.addStretch(1)
+        step2_layout.addWidget(hframe_toggle)
         main_layout.addWidget(self._step2_frame)
+
+
         return panel
 
     def _create_action_buttons(self, parent):
@@ -185,17 +216,6 @@ class SegmentMapTool(ToolInstance):
             ('Help', self._show_or_hide_guide)
         ], spacing=10, button_list=True)
         return frame
-
-    # def _create_option_gui(self, parent):
-    #     self._options_panel = CollapsiblePanel(parent, title='Advanced Options')
-    #     content_area = self._options_panel.content_area
-
-    #     # Prediction options.
-    #     prediction_header = QLabel("<b>Prediction Options</b>", content_area)
-    #     content_area.layout().addWidget(prediction_header)
-
-    #     self._options_panel.setVisible(False)
-
 
     def _create_option_gui(self, parent):
 
@@ -232,8 +252,8 @@ class SegmentMapTool(ToolInstance):
 
         row += 1
         # GPU ID option.
-        is_gpu_available = torch.cuda.is_available()
-        num_gpus_available = torch.cuda.device_count()
+        is_gpu_available = self._is_gpu_available()
+        num_gpus_available = self._get_gpu_count()
         gpu_label = QLabel("GPU ID:", self._options_panel)
         gpu_info_text = f"({num_gpus_available} GPUs available)" if is_gpu_available else "(No GPUs detected)"
         gpu_info_label = QLabel(gpu_info_text, self._options_panel)
@@ -264,11 +284,37 @@ class SegmentMapTool(ToolInstance):
         opt_layout.addWidget(smooth_label, row, 0)
         opt_layout.addWidget(self._smooth_size, row, 1)
         opt_layout.addWidget(smooth_label_info_label, row, 2)
-        
+
+        # Add checkbox to control display of step 2.
+        row += 1
+        self._show_step2_checkbox = QCheckBox("Show Detergent Removal", self._options_panel)
+        self._show_step2_checkbox.setChecked(self.show_step2)
+        self._show_step2_checkbox.stateChanged.connect(self._control_step2_display)
+        opt_layout.addWidget(self._show_step2_checkbox, row, 0)
+
         self._options_panel.setVisible(False)
         
         return self._options_panel
 
+    def _is_gpu_available(self):
+        import torch
+        # assume OS is Linux
+        if torch.cuda.is_available():
+            return True
+        elif torch.backends.mps.is_available():
+            return True
+        else:
+            return False
+
+    def _get_gpu_count(self):
+        import torch
+        if torch.cuda.is_available():
+            return torch.cuda.device_count()
+        elif torch.backends.mps.is_available():
+            return 1
+        else:
+            return 0    
+            
     def _show_or_hide_options(self):
         is_options_visible = self._options_panel.isVisible()
         new_visibility = not is_options_visible
@@ -277,7 +323,7 @@ class SegmentMapTool(ToolInstance):
 
     def _show_or_hide_guide(self):
         from chimerax.help_viewer import show_url
-        show_url(self.session, "https://gitlab.tudelft.nl/aj-lab/surfer")
+        show_url(self.session, "https://locscale-surfer.readthedocs.io")
 
     def _segment(self):
         import os
@@ -325,7 +371,8 @@ class SegmentMapTool(ToolInstance):
         self._segmentation_menu.setEnabled(True)
 
         # Enable Step 2.
-        self._step2_frame.setEnabled(True)
+        self.show_step2 = True
+        self._control_step2_display(self.show_step2)
 
     def _remove(self):
         from scipy.ndimage import uniform_filter
@@ -357,19 +404,48 @@ class SegmentMapTool(ToolInstance):
         origin = target_map.data.origin
 
         # Create new volume for target map without detergent.
-        target_grid_data = ArrayGridData(new_target_map, origin=origin, step=pixel_size)
-        target_grid_data.name = target_map.name + "_without_detergent"
-        new_target_map_volume = volume_from_grid_data(target_grid_data, self.session)
+        new_target_grid_data = ArrayGridData(new_target_map, origin=origin, step=pixel_size)
+        new_target_grid_data.name = target_map.name + "_without_detergent"
+        new_target_map_volume = volume_from_grid_data(new_target_grid_data, self.session)
+        self._new_target_map_volume = new_target_map_volume
         self._status_label.setText("Micelle removal complete.")
 
         # Display new target map and old target map at the same contour level for comparison.
-        target_map.set_transparency(25)
+        # target_map.set_transparency(25)
         surface_level_of_target_map = target_map.minimum_surface_level
         run(self.session, "vop hide")
         new_target_map_volume.set_parameters(surface_levels=[surface_level_of_target_map], image_colors=[(0,1,0)])
         new_target_map_volume.show()
-        target_map.show()
+        # target_map.show()
 
+    def _toggle_display(self, show_original):
+        if show_original:
+            # show the target map and hide the new_target_map volume
+            target_map = self._target_map()
+            new_target_map_volume = self._new_target_map() 
+            if new_target_map_volume is None:
+                self._status_label.setText("Remove detergent first")
+                return
+            if target_map is None:
+                self._status_label.setText("Select target map")
+                return
+            target_map.display = True
+            new_target_map_volume.display = False
+            
+        else:
+            # hide the target map and show the new_target_map volume
+            target_map = self._target_map()
+            new_target_map_volume = self._new_target_map() 
+            if new_target_map_volume is None:
+                self._status_label.setText("Remove detergent first")
+                return
+            if target_map is None:
+                self._status_label.setText("Select target map")
+                return
+            surface_level_of_target_map = target_map.minimum_surface_level
+            target_map.display = False
+            new_target_map_volume.display = True
+            new_target_map_volume.set_parameters(surface_levels=[surface_level_of_target_map], image_colors=[(0,1,0)])
 
     def _input_map(self):
         m = self._query_map_menu.value
@@ -383,6 +459,10 @@ class SegmentMapTool(ToolInstance):
         m = self._target_map_menu.value
         return m if isinstance(m, Volume) else None
 
+    def _new_target_map(self):
+        m = self._new_target_map_volume
+        return m if isinstance(m, Volume) else None
+    
     def _object_chosen(self):
         self._update_options()
         self._status_label.setText(" ")
