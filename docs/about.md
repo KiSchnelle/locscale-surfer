@@ -10,7 +10,7 @@ LoScale-SURFER is facilitated by number of open-source projects.
 
 We acknowledge the use of computational resources of the DelftBlue supercomputer, provided by [Delft High Performance Computing Centre](https://www.tudelft.nl/dhpc).
 
-References {#references}
+## References {#references}
 
 {==A preprint describing `LocScale-SURFER` is in preparation.==}
 ~                                                                 
