@@ -48,6 +48,8 @@ markdown_extensions:
   - tables
   - pymdownx.details
   - pymdownx.superfences
+  - pymdownx.critic
+  - pymdownx.mark
   - pymdownx.tabbed:
       alternate_style: true
   - attr_list
@@ -77,7 +79,7 @@ extra:
 
 nav:
   - Introduction: index.md
-  - Install: install.md
+  - Installation: install.md
   - Tutorial: tutorial.md
   - About: about.md
 
