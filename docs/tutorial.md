@@ -32,13 +32,14 @@ In this example we will use the pentameric calcium-sensitive channel DeCLIC from
     ![SURFER_tutorial_04](img/LocScale-SURFER_tutorial_04.png)
     Select the map from which the segmented micelle should be subtracted (in this case the feature-enhanced map from ```LocScale-FEM```. This will create a new volume.
 
--   :material-numeric-5-box:{ .lg .top } __Toggle between maps with and without micelle__  
+-   :material-numeric-5-box:{ .lg .top } __Toggle between maps with and without micelle__
 
     ---
     ![SURFER_tutorial_05](img/LocScale-SURFER_tutorial_05.png)
-    You can toggle between both maps with the toggle switch in the LocScale-SURFER GUI.
+    You can toggle between both maps with the toggle switch in the LocScale-SURFER GUI. Here contextual information is OFF.
 
--   :material-numeric-6-box:{ .lg .top } __Select LocScale mode__  
+-   :material-numeric-6-box:{ .lg .top } __Toggle between maps with and without micelle__
 
     ---
     ![SURFER_tutorial_06](img/LocScale-SURFER_tutorial_06.png)
+    You can toggle between both maps with the toggle switch in the LocScale-SURFER GUI. Here contextual information is ON.
