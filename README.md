@@ -12,7 +12,7 @@ It currently supports the detection and targeted segmentation/removal of micella
 ## Documentation
 
 >[!IMPORTANT]
-> Please visit [https://cryotud.github.io/locscale-surfer/](https://cryotud.github.io/locscale/) for comprehensive documentation, tutorials and troubleshooting.
+> Please visit [https://cryotud.github.io/locscale-surfer/](https://cryotud.github.io/locscale-surfer/) for comprehensive documentation, tutorials and troubleshooting.
 
 ## Installation
 
