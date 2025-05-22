@@ -1,3 +1,8 @@
+![GitHub Release](https://img.shields.io/github/v/release/cryotud/locscale-surfer)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-green)](https://www.python.org/downloads/release/python-3110/)
+[![License](https://img.shields.io/pypi/l/locscale.svg?color=orange)](https://gitlab.tudelft.nl/aj-lab/locscale/raw/master/LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15488062.svg)](https://doi.org/10.5281/zenodo.15488062)
+
 # LocScale-SURFER 
 ## ChimeraX Bundle 
 
