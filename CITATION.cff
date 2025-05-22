@@ -1,0 +1,22 @@
+abstract: No description provided.
+authors:
+- affiliation: Delft University of Technology
+  family-names: Alok Bharadwaj
+  orcid: 0000-0002-7223-5648
+- affiliation: Delft University of Technology
+  family-names: Jakobi
+  given-names: Arjen J.
+  orcid: 0000-0002-7761-2027
+cff-version: 1.2.0
+date-released: '2025-05-22'
+doi: 10.5281/zenodo.15488062
+identifiers:
+- type: swh
+  value: swh:1:dir:122e7d2a0ee15e4461425d8dc83af6d83f1e860c;origin=https://doi.org/10.5281/zenodo.15488061;visit=swh:1:snp:060450b51fe0bf4ac0d6048cc7a20d4d86bd101a;anchor=swh:1:rel:ac4afa9d36a6e99519a88b122739bd55e0911b42;path=cryoTUD-locscale-surfer-b15246f
+license:
+- cc-by-4.0
+message: If you use this software, please cite it as below.
+repository-code: https://github.com/cryotud/locscale-surfer/tree/v0.1.0
+title: LocScale-SURFER
+type: software
+version: v0.1.0
