@@ -34,3 +34,11 @@ devel clean PATH_TO_REPO
 4. Restart ChimeraX.
 5. You should now see the LocScale-SURFER tool in: ```Tools > Volume Data > LocScale-SURFER ```
 
+## Credits
+`LoScale-SURFER` is facilitated by a number of open-source projects.
+
+- [`OPM database`](https://opm.phar.umich.edu/ppm_server): Orientations of Proteins in Membranes (OPM) database.
+- [`Optuna`](https://github.com/optuna/optuna): Hyperparameter optimisation. [MIT license]
+- [`SCUNet`](https://github.com/cszn/SCUNet): Semantic segmentation. [Apache 2.0]
+
+
