@@ -12,7 +12,7 @@ will be displayed without the ChimeraX- prefix.
   <!-- Additional information about bundle source -->
   <Author>Alok Bharadwaj, Arjen Jakobi</Author>
   <Email>a.bharadwaj@tudelft.nl, a.jakobi@tudelft.nl</Email>
-  <URL>https://gitlab.tudelft.nl/aj-lab/locscale</URL>
+  <URL>https://github.com/cryoTUD/locscale-surfer.git</URL>
 
   <!-- Synopsis is a one-line description
        Description is a full multi-line description -->
