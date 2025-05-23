@@ -3,7 +3,7 @@
 ### From source code: 
 1. Clone the repository: 
 ```bash
-git clone https://gitlab.tudelft.nl/aj-lab/surfer.git
+git clone https://github.com/cryoTUD/locscale-surfer.git
 ```
 Note the full path of the cloned repository.
 PATH_TO_REPO = path/to/surfer
