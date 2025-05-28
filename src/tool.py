@@ -27,25 +27,37 @@ class SegmentMapTool(ToolInstance):
         self.display_name = "LocScale-SURFER"
         self.tool_window = MainToolWindow(self)
         self.show_step2 = False
+        self.segment_largest_component = True  # Default to segmenting the largest component
+        self.segmented_map = None  # will hold the segmentation array
+        self.binarised_segmented_map = None  # will hold the binarised segmentation array
+        self._segmentation_volume = None  # will hold the segmentation volume
+        self._binarised_segmented_volume = None  # will hold the binarised segmentation volume
+        self._new_target_map_volume = None # will hold the new target map volume (without detergent)
+        self._filter_size = 5  # Default filter size for smoothing the binarised segmented map
+        self._need_to_filter_segmented_map = True  # Flag to check if the filter has been applied
+        
+
         parent = self.tool_window.ui_area
         layout = vertical_layout(parent, margins=(5,0,0,0))
         self.log = session.logger
-
-        # Create the pipeline panels for the two steps.
-        self.pipeline_panel = self._create_pipeline_panel(parent)
-        layout.addWidget(self.pipeline_panel)
+        self.log.info("LocScale-SURFER tool initialized.")
+        self.log.info("Segment and hide micelle densities in cryo-EM maps.")
+        self.log.info("Use an unsharpened map as input, and optionally a mask map to speed up computation")
 
         # Additional buttons for Options and Help.
         buttons_frame = self._create_action_buttons(parent)
         layout.addWidget(buttons_frame)
 
+        # Create the pipeline panels for the two steps.
+        self.pipeline_panel = self._create_pipeline_panel(parent)
+        layout.addWidget(self.pipeline_panel)
+
+        
+
         # Advanced options panel.
         options = self._create_option_gui(parent)
         layout.addWidget(options)
 
-        # Status label.
-        self._status_label = QLabel(parent)
-        layout.addWidget(self._status_label)
 
         self.tool_window.manage(placement="side")
 
@@ -53,10 +65,7 @@ class SegmentMapTool(ToolInstance):
         self._control_step2_display(self.show_step2)
         # The segmentation volume menu is initially disabled.
         #self._segmentation_menu.setEnabled(False)
-        self.segmented_map = None  # will hold the segmentation array
-        self._segmentation_volume = None  # will hold the segmentation volume
-        self._new_target_map_volume = None # will hold the new target map volume (without detergent)
-
+        
     def _control_step2_display(self, display):
         # Enable or disable the display of Step 2 based on the segmentation completion.
         self._step2_frame.setEnabled(display)
@@ -81,27 +90,34 @@ class SegmentMapTool(ToolInstance):
         input_map_help_text = help_info["input_map_help"]
         input_label.setToolTip(input_map_help_text)
         hlayout1.addWidget(input_label)
+
         self._query_map_menu = ModelMenuButton(self.session, class_filter=Volume)
 #        vertical_list = self.session.models.list(type=Volume)
 #        if vertical_list:
 #            self._query_map_menu.value = vertical_list[0]
         self._query_map_menu.value_changed.connect(self._object_chosen)
         hlayout1.addWidget(self._query_map_menu)
+        hlayout1.addStretch(1)
+        step1_layout.addWidget(hframe1)
 
         # Mask map selection (optional). Set autoselect="none" so that no default model is chosen.
-        mask_label = QLabel("Mask (optional):", hframe1)
+        mask_frame = QFrame(step1_frame)
+        mask_layout = QHBoxLayout(mask_frame)
+        mask_layout.setContentsMargins(0,0,0,0)
+        mask_layout.setSpacing(10)
+
+        mask_label = QLabel("Mask (optional):", mask_frame)
         mask_map_help_text = help_info["mask_map_help"]
         mask_label.setToolTip(mask_map_help_text)
-        hlayout1.addWidget(mask_label)
+        mask_layout.addWidget(mask_label)
         self._mask_map_menu = ModelMenuButton(self.session, class_filter=Volume,
                                                no_value_button_text="No model chosen",
                                                no_value_menu_text="None",
                                                autoselect="none")
         self._mask_map_menu.value_changed.connect(self._object_chosen)
-        hlayout1.addWidget(self._mask_map_menu)
-
-        hlayout1.addStretch(1)
-        step1_layout.addWidget(hframe1)
+        mask_layout.addWidget(self._mask_map_menu)
+        mask_layout.addStretch(1)
+        step1_layout.addWidget(mask_frame)
 
         # "Segment" button in Step 1.
         hframe_seg = QFrame(step1_frame)
@@ -165,12 +181,26 @@ class SegmentMapTool(ToolInstance):
         thresh_layout.addWidget(thresh_label)
         self._removal_threshold = QDoubleSpinBox(hframe_thresh)
         self._removal_threshold.setRange(0.0, 1.0)
-        self._removal_threshold.setSingleStep(0.01)
+        self._removal_threshold.setSingleStep(0.001)
+        self._removal_threshold.setDecimals(3)
         self._removal_threshold.setValue(0.5)
         thresh_layout.addWidget(self._removal_threshold)
         thresh_layout.addStretch(1)
         step2_layout.addWidget(hframe_thresh)
 
+
+        # Add a button to create a binarised segmented volume.
+        hframe_show_binarised = QFrame(self._step2_frame)
+        show_binarised_layout = QHBoxLayout(hframe_show_binarised)
+        show_binarised_layout.setContentsMargins(0,0,0,0)
+        show_binarised_layout.setSpacing(10)
+        self._show_binarised_button = QPushButton("Show Binarised Micelle", hframe_show_binarised)
+        self._show_binarised_button.clicked.connect(lambda: self._create_binarised_segmented_volume())
+        self._show_binarised_button.setToolTip("Show the binarised segmentation volume")
+        show_binarised_layout.addWidget(self._show_binarised_button)
+        show_binarised_layout.addStretch(1)
+        step2_layout.addWidget(hframe_show_binarised)
+        
         # "Remove" button in Step 2.
         hframe_remove = QFrame(self._step2_frame)
         remove_layout = QHBoxLayout(hframe_remove)
@@ -256,13 +286,20 @@ class SegmentMapTool(ToolInstance):
         num_gpus_available = self._get_gpu_count()
         gpu_label = QLabel("GPU ID:", self._options_panel)
         gpu_info_text = f"({num_gpus_available} GPUs available)" if is_gpu_available else "(No GPUs detected)"
+        if torch.backends.mps.is_available():
+            tooltip_text = "Apple device detected, but MPS does not support Conv3D operations. Using CPU instead."
+        else:
+            tooltip_text = "Select GPU ID for segmentation. If no GPUs are available, CPU will be used."
         gpu_info_label = QLabel(gpu_info_text, self._options_panel)
         self._gpu_id = QSpinBox(self._options_panel)
         self._gpu_id.setRange(0, num_gpus_available - 1)
         self._gpu_id.setValue(0)
+        gpu_label.setToolTip(tooltip_text)
         opt_layout.addWidget(gpu_label, row, 0)
         opt_layout.addWidget(self._gpu_id, row, 1)
         opt_layout.addWidget(gpu_info_label, row, 2)
+        
+
 
         gpu_label.setEnabled(is_gpu_available)
         self._gpu_id.setEnabled(is_gpu_available)
@@ -280,10 +317,21 @@ class SegmentMapTool(ToolInstance):
         smooth_label.setToolTip(smooth_label_help_text)
         self._smooth_size = QSpinBox(self._options_panel)
         self._smooth_size.setRange(1, 20)
-        self._smooth_size.setValue(5)
+        self._smooth_size.setValue(self._filter_size)
+        # set _has_filter_size_changed to True when the value is changed
+        self._smooth_size.valueChanged.connect(lambda value: setattr(self, '_need_to_filter_segmented_map', True))
+
         opt_layout.addWidget(smooth_label, row, 0)
         opt_layout.addWidget(self._smooth_size, row, 1)
         opt_layout.addWidget(smooth_label_info_label, row, 2)
+
+        # Add a checkbox to select whether to filter the segmented map based on the largest segment
+        row += 1
+        self._largest_segment_checkbox = QCheckBox("Use largest segment", self._options_panel)
+        self._largest_segment_checkbox.setChecked(self.segment_largest_component)
+        self._largest_segment_checkbox.stateChanged.connect(lambda state: self.largest_segment_checkbox_state_changed(state))
+        opt_layout.addWidget(self._largest_segment_checkbox, row, 0)
+        
 
         # Add checkbox to control display of step 2.
         row += 1
@@ -291,18 +339,23 @@ class SegmentMapTool(ToolInstance):
         self._show_step2_checkbox.setChecked(self.show_step2)
         self._show_step2_checkbox.stateChanged.connect(self._control_step2_display)
         opt_layout.addWidget(self._show_step2_checkbox, row, 0)
-
+        
         self._options_panel.setVisible(False)
         
         return self._options_panel
 
+    def largest_segment_checkbox_state_changed(self, state):
+        # Update the segment_largest_component attribute based on the checkbox state.
+        self.segment_largest_component = (state == Qt.Checked)
+        self.log.info(f"Segment largest component set to: {self.segment_largest_component}")
+        self._need_to_filter_segmented_map = True  # Set the flag to True to filter the segmented map again
     def _is_gpu_available(self):
         import torch
         # assume OS is Linux
         if torch.cuda.is_available():
             return True
         elif torch.backends.mps.is_available():
-            return True
+            return False # MPS is available on macOS, but it does not support Conv3D so we return False
         else:
             return False
 
@@ -311,7 +364,7 @@ class SegmentMapTool(ToolInstance):
         if torch.cuda.is_available():
             return torch.cuda.device_count()
         elif torch.backends.mps.is_available():
-            return 1
+            return 0 # MPS does not support Conv3D, so we return 0
         else:
             return 0    
             
@@ -335,21 +388,30 @@ class SegmentMapTool(ToolInstance):
         assert os.path.exists(model_state_path), f"Model state file not found at {model_state_path}"
 
         if input_map_for_segmentation is None:
-            self._status_label.setText("No input map selected")
+            self.log.warning("No input map selected for segmentation.")
             return
 
         # Allow mask_map to be None.
         if mask_map is None:
-            self.log.info("No mask map provided, proceeding without mask.")
             mask_map_np = None
         else:
             mask_map_np = mask_map.data.full_matrix()
+
+        self.log.info("Segmenting map with the following inputs:")
+        self.log.info(f"Input map: {input_map_for_segmentation.name}")
+
+        if mask_map is not None:
+            self.log.info(f"Mask map: {mask_map.name}")
+        else:
+            self.log.info("No mask map provided.")
+
+        
 
         input_map_np = input_map_for_segmentation.data.full_matrix()
         pixel_size = input_map_for_segmentation.data.step
         origin = input_map_for_segmentation.data.origin
         # Print the status 
-        self._status_label.setText("Segmenting map...")
+        self.log.info("Starting segmentation...")
         # Call predict with the prediction options.
         self.segmented_map = predict(
             input_map_np, pixel_size[0], mask_map_np,
@@ -358,7 +420,7 @@ class SegmentMapTool(ToolInstance):
             step_size=self._step_size.value(),
             gpu_ids=[self._gpu_id.value()]
         )
-        self._status_label.setText("Segmentation complete.")
+        self.log.info("Segmentation complete.")
 
         # Create a segmentation volume from the segmented map.
         seg_grid_data = ArrayGridData(self.segmented_map, origin=origin, step=pixel_size)
@@ -375,40 +437,26 @@ class SegmentMapTool(ToolInstance):
         self._control_step2_display(self.show_step2)
 
     def _remove(self):
-        from scipy.ndimage import uniform_filter
+        
         target_map = self._target_map()
         if target_map is None:
-            self._status_label.setText("No target map selected")
+            self.log.warning("No target map selected for detergent removal.")
             return
 
-        # Use the segmentation volume selected by the user.
-        seg_vol = self._segmentation_menu.value
-        if seg_vol is None:
-            self._status_label.setText("No segmented map selected for removal")
-            return
-
-        # Get the segmentation data from the selected segmentation volume.
-        seg_data = seg_vol.data.full_matrix()
-
-        # Use the QDoubleSpinBox value for threshold.
-        threshold_value = self._removal_threshold.value()
-        # Binarise the segmentation data using the user-specified threshold.
-        seg_binarised = (seg_data > threshold_value).astype(float)
-        # Use the user-defined smoothening filter size.
-        smooth_seg = uniform_filter(seg_binarised, size=self._smooth_size.value())
-
+        self._update_binarised_segmented_map()
+        
         target_map_np = target_map.data.full_matrix()
-        new_target_map = target_map_np * (1 - smooth_seg)
+        new_target_map = target_map_np * (1 - self.binarised_segmented_map)
 
         pixel_size = target_map.data.step
         origin = target_map.data.origin
 
         # Create new volume for target map without detergent.
         new_target_grid_data = ArrayGridData(new_target_map, origin=origin, step=pixel_size)
-        new_target_grid_data.name = target_map.name + "_without_detergent"
+        new_target_grid_data.name = target_map.name + "_without_micelle"
         new_target_map_volume = volume_from_grid_data(new_target_grid_data, self.session)
         self._new_target_map_volume = new_target_map_volume
-        self._status_label.setText("Micelle removal complete.")
+        self.log.info("Micelle removal complete.")
 
         # Display new target map and old target map at the same contour level for comparison.
         # target_map.set_transparency(25)
@@ -424,10 +472,10 @@ class SegmentMapTool(ToolInstance):
             target_map = self._target_map()
             new_target_map_volume = self._new_target_map() 
             if new_target_map_volume is None:
-                self._status_label.setText("Remove detergent first")
+                self.log.warning("No new target map volume available for display.")
                 return
             if target_map is None:
-                self._status_label.setText("Select target map")
+                self.log.warning("No target map selected for display.")
                 return
             target_map.display = True
             new_target_map_volume.display = False
@@ -437,10 +485,10 @@ class SegmentMapTool(ToolInstance):
             target_map = self._target_map()
             new_target_map_volume = self._new_target_map() 
             if new_target_map_volume is None:
-                self._status_label.setText("Remove detergent first")
+                self.log.warning("Remove detergent first")
                 return
             if target_map is None:
-                self._status_label.setText("Select target map")
+                self.log.warning("Select target map")
                 return
             surface_level_of_target_map = target_map.minimum_surface_level
             target_map.display = False
@@ -463,9 +511,80 @@ class SegmentMapTool(ToolInstance):
         m = self._new_target_map_volume
         return m if isinstance(m, Volume) else None
     
+    def _create_binarised_segmented_map(self, threshold):
+        seg_vol = self._segmentation_menu.value
+        if seg_vol is None:
+            self.log.warning("No segmentation volume selected.")
+            return
+
+        # Get the segmentation data from the selected segmentation volume.
+        seg_data = seg_vol.data.full_matrix()
+
+        # Binarise the segmented map using the threshold.
+        binarised_map = (seg_data > threshold).astype(float)
+        self.binarised_segmented_map = binarised_map
+        
+
+    def _select_largest_component(self):
+        from scipy.ndimage import label
+        # if self.binarised_segmented_map is None:
+        #     self.log.warning("Create binarised segmented map first")
+        #     return None
+        
+        # Label the connected components in the binarised segmentation.
+        labeled_seg, num_features = label(self.binarised_segmented_map)
+        # Find the largest connected component.
+        size_of_each_component = {i: (labeled_seg == i).sum() for i in range(1, num_features + 1)}
+        largest_component = max(size_of_each_component, key=size_of_each_component.get)
+        # Keep only the largest connected component.
+        largest_component_mask = (labeled_seg == largest_component).astype(float)
+        # Create a new binarised segmented map with only the largest component.
+        self.binarised_segmented_map = largest_component_mask
+        self.log.info("Largest component selected.")
+
+    def _filter_binarised_segmented_map(self, filter_size):
+        from scipy.ndimage import uniform_filter        
+        # Apply a uniform filter to smooth the binarised segmented map.
+        if self._need_to_filter_segmented_map:
+            smoothed_map = uniform_filter(self.binarised_segmented_map, size=filter_size)
+            self.binarised_segmented_map = smoothed_map
+            self._need_to_filter_segmented_map = False  # Reset the flag after filtering
+            self.log.info(f"Binarised segmented map smoothed with filter size {filter_size}.")
+    
+    def _update_binarised_segmented_map(self):
+        # Update the binarised segmented map with the current threshold value.
+        threshold_value = self._removal_threshold.value()
+        self._need_to_filter_segmented_map = True
+        self._create_binarised_segmented_map(threshold_value)
+        if self.segment_largest_component:
+            # If the user wants to segment the largest component, we will do that.
+            self._select_largest_component()
+        
+        # Smooth the binarised segmented map using the user-specified smooth size.
+        self._filter_binarised_segmented_map(self._filter_size)
+
+    def _create_binarised_segmented_volume(self):
+        # Create binarised map 
+        pixel_size = self._input_map().data.step
+        origin = self._input_map().data.origin
+
+        self._update_binarised_segmented_map()
+
+        self.log.info("Creating binarised segmented volume.")
+        
+        # Create a volume from the binarised segmented map.
+        binarised_grid_data = ArrayGridData(self.binarised_segmented_map, origin=origin, step=pixel_size)
+        binarised_grid_data.name = "Binarised Segmentation"
+        binarised_volume = volume_from_grid_data(binarised_grid_data, self.session)
+        self._binarised_segmented_volume = binarised_volume
+        # set level to 0.5
+        binarised_volume.set_parameters(surface_levels=[0.5])
+        self.log.info("Binarised segmented volume created: " + binarised_volume.name)
+        
+    
     def _object_chosen(self):
         self._update_options()
-        self._status_label.setText(" ")
+        self.log.info(" ")
 
     def _update_options(self):
         self._s_map = self._input_map()

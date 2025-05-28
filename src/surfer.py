@@ -47,6 +47,17 @@ def cube_map(unsharp_map, unsharp_apix, mask, cube_size=48,step_size=32):
 
     return cubed_unsharp_map, cubecenters, unsharp_apix, prepro_unsharp_map.shape, unsharp_map.shape, filtered_cube_centers
 
+def select_device_based_on_os():
+    # if linux use torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    import torch
+    if torch.backends.mps.is_available():
+        # Conv3D is not supported on MPS, so we use the CPU for now
+        return torch.device('cpu')
+    elif torch.cuda.is_available():
+        return torch.device('cuda')
+    else:
+        return torch.device('cpu')
+
 def predict(
     input_map,
     apix,
@@ -95,16 +106,17 @@ def predict(
             window_size=3,
         )
     
-    
-    
     # Load model for evaluation
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    device = select_device_based_on_os()
     if device == 'cuda':
         print(f'Using GPU: {gpu_ids}')
         model = torch.nn.DataParallel(model, device_ids=["cuda:" + str(gpu_id) for gpu_id in gpu_ids])
-    elif device == 'cpu':
-        print('Using CPU.')      
-    use_gpu = torch.cuda.is_available()
+    # elif device == 'mps':
+    #     model = torch.nn.DataParallel(model)
+    # else:
+    #     print('Using CPU.')      
+
+    use_gpu = torch.cuda.is_available() or device.type == 'mps'
   
     checkpoint = torch.load(model_state_path, map_location=device)
     state_dict = checkpoint['model_state_dict']
@@ -134,7 +146,7 @@ def predict(
             outputs = model(emmap)
             outputs = torch.sigmoid(outputs)
             
-            if torch.cuda.is_available():
+            if use_gpu:
                 outputs = outputs.cpu()
 
             outputs = outputs.numpy()
