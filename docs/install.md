@@ -1,4 +1,12 @@
-# Installlation
+# Installation
+
+### From the ChimeraX toolshed
+
+Navigate to the [ChimeraX toolshed](https://cxtoolshed.rbvi.ucsf.edu/) (menu "Tools" -> "More tools") and install `locscalesurfer`. Alternatively, in the ChimeraX command line interface:
+
+```bash
+toolshed install locscale surfer
+```
 
 ### From source code: 
 1. Clone the repository: 
