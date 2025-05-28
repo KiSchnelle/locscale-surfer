@@ -21,6 +21,12 @@ It currently supports the detection and targeted segmentation/removal of micella
 
 ## Installation
 
+### From the ChimeraX toolshed:
+
+```
+toolshed install locscalesurfer
+```
+
 ### From source code: 
 1. Clone the repository: 
 ```bash
