@@ -23,14 +23,14 @@ In this example we will use the pentameric calcium-sensitive channel DeCLIC from
   
     ---
     ![SURFER_tutorial_03](img/LocScale-SURFER_tutorial_03.png)
-    In the LocScale-SURFER GUI select the raw, unsharpened map and the FDR confidence mask from the ```LocScale``` run. This will take 1-5 min, depending on the size of your map.
+    In the LocScale-SURFER GUI select the raw, unsharpened map and the FDR confidence mask from the ```LocScale``` run. If you do not have an FDR mask you can generate one on the fly (in this case leave the mask field empty). Then press "Segment". This will take 1-5 min, depending on the size of your map.
 
 
 -   :material-numeric-4-box:{ .lg .top } __Segment and subtract micelle/membrane__  
 
     ---
     ![SURFER_tutorial_04](img/LocScale-SURFER_tutorial_04.png)
-    Select the map from which the segmented micelle should be subtracted (in this case the feature-enhanced map from ```LocScale-FEM```. This will create a new volume.
+    Select the map from which the segmented micelle should be subtracted (in this case the feature-enhanced map from ```LocScale-FEM```) and choose a removal threshold (this is the threshold of the removal mask - called "predicted_micelle"). Typically the 0.5 default is fine, but you may have to tune it. The mask should cover your detergent belt/micelle/nanodisk without cutting into remaining density. "Remove" will then create a new volume with the micelle substracted.
 
 -   :material-numeric-5-box:{ .lg .top } __Toggle between maps with and without micelle__
 
