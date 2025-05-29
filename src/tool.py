@@ -376,7 +376,7 @@ class SegmentMapTool(ToolInstance):
 
     def _show_or_hide_guide(self):
         from chimerax.help_viewer import show_url
-        show_url(self.session, "https://locscale-surfer.readthedocs.io")
+        show_url(self.session, "https://cryotud.github.io/locscale-surfer/")
 
     def _segment(self):
         import os
