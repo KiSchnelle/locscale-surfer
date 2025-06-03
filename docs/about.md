@@ -7,6 +7,7 @@ LoScale-SURFER is facilitated by number of open-source projects.
     - [`OPM database`](https://opm.phar.umich.edu/ppm_server): Orientations of Proteins in Membranes (OPM) database.
     - [`Optuna`](https://github.com/optuna/optuna): Hyperparameter optimisation. [MIT license]
     - [`SCUNet`](https://github.com/cszn/SCUNet): Semantic segmentation. [Apache 2.0]
+    - [`EMReady`](http://huanglab.phys.hust.edu.cn/EMReady/) : 3-D SCUNet architecture. [GNU 3.0]
 
 We acknowledge the use of computational resources of the DelftBlue supercomputer, provided by [Delft High Performance Computing Centre](https://www.tudelft.nl/dhpc).
 
