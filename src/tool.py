@@ -335,7 +335,7 @@ class SegmentMapTool(ToolInstance):
 
         # Add checkbox to control display of step 2.
         row += 1
-        self._show_step2_checkbox = QCheckBox("Show Detergent Removal", self._options_panel)
+        self._show_step2_checkbox = QCheckBox("Enable Detergent Removal", self._options_panel)
         self._show_step2_checkbox.setChecked(self.show_step2)
         self._show_step2_checkbox.stateChanged.connect(self._control_step2_display)
         opt_layout.addWidget(self._show_step2_checkbox, row, 0)
