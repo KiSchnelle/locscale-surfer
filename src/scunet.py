@@ -5,7 +5,7 @@ import torch.nn as nn
 # from thop import profile
 from einops import rearrange
 from einops.layers.torch import Rearrange
-from timm.models.layers import DropPath, trunc_normal_
+from timm.layers import DropPath, trunc_normal_
 
 from .frn import FilterResponseNorm3d
 
