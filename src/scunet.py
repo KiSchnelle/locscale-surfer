@@ -1,134 +1,238 @@
+import numpy as np
 import torch
 import torch.nn as nn
-import numpy as np
-#from thop import profile
-from einops import rearrange 
-from einops.layers.torch import Rearrange, Reduce
-from timm.models.layers import trunc_normal_, DropPath
+
+# from thop import profile
+from einops import rearrange
+from einops.layers.torch import Rearrange
+from timm.models.layers import DropPath, trunc_normal_
 
 from .frn import FilterResponseNorm3d
 
 torch.set_printoptions(threshold=np.inf)
+
+
 class WMSA(nn.Module):
-    """ Self-attention module in Swin Transformer
-    """
+    """Self-attention module in Swin Transformer"""
 
     def __init__(self, input_dim, output_dim, head_dim, window_size, type):
         super(WMSA, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
-        self.head_dim = head_dim 
-        self.scale = self.head_dim ** -0.5
-        self.n_heads = input_dim//head_dim
+        self.head_dim = head_dim
+        self.scale = self.head_dim**-0.5
+        self.n_heads = input_dim // head_dim
         self.window_size = window_size
-        self.type=type
-        self.embedding_layer = nn.Linear(self.input_dim, 3*self.input_dim, bias=True) 
+        self.type = type
+        self.embedding_layer = nn.Linear(self.input_dim, 3 * self.input_dim, bias=True)
 
-        self.relative_position_params = nn.Parameter(torch.zeros((2 * window_size - 1)*(2 * window_size -1)*(2 * window_size -1), self.n_heads))
+        self.relative_position_params = nn.Parameter(
+            torch.zeros(
+                (2 * window_size - 1) * (2 * window_size - 1) * (2 * window_size - 1),
+                self.n_heads,
+            )
+        )
 
         self.linear = nn.Linear(self.input_dim, self.output_dim)
 
-        trunc_normal_(self.relative_position_params, std=.02)
-        self.relative_position_params = torch.nn.Parameter(self.relative_position_params.view(2*window_size-1, 2*window_size-1, 2*window_size-1, self.n_heads).transpose(2,3).transpose(1,2).transpose(0,1))
+        trunc_normal_(self.relative_position_params, std=0.02)
+        self.relative_position_params = torch.nn.Parameter(
+            self.relative_position_params.view(
+                2 * window_size - 1,
+                2 * window_size - 1,
+                2 * window_size - 1,
+                self.n_heads,
+            )
+            .transpose(2, 3)
+            .transpose(1, 2)
+            .transpose(0, 1)
+        )
 
         # jhe modification
-        cord = torch.tensor(np.array([[i, j, k] for i in range(self.window_size) for j in range(self.window_size) for k in range(self.window_size)]))
+        cord = torch.tensor(
+            np.array(
+                [
+                    [i, j, k]
+                    for i in range(self.window_size)
+                    for j in range(self.window_size)
+                    for k in range(self.window_size)
+                ]
+            )
+        )
         # TODO
-        self.relation = cord[:, None, :] - cord[None, :, :] + self.window_size -1
-        #print(self.relation.shape, self.relative_position_params.shape)
-        #print(self.relation[:,:,0].long())
-        #print(self.relative_position_params.shape)
-        #print(self.relative_position_params[:, self.relation[:,:,0].long(), self.relation[:,:,1].long(), self.relation[:,:,2].long()].shape)
-        #exit()
+        self.relation = cord[:, None, :] - cord[None, :, :] + self.window_size - 1
+        # print(self.relation.shape, self.relative_position_params.shape)
+        # print(self.relation[:,:,0].long())
+        # print(self.relative_position_params.shape)
+        # print(self.relative_position_params[:, self.relation[:,:,0].long(), self.relation[:,:,1].long(), self.relation[:,:,2].long()].shape)
+        # exit()
 
     def generate_mask(self, h, w, d, p, shift):
-        """ generating the mask of SW-MSA
+        """generating the mask of SW-MSA
         Args:
             shift: shift parameters in CyclicShift.
         Returns:
             attn_mask: should be (1 1 w p p),
         """
         # supporting sqaure.
-        attn_mask = torch.zeros(h, w, d, p, p, p, p, p, p, dtype=torch.bool, device=self.relative_position_params.device)
-        if self.type == 'W':
+        attn_mask = torch.zeros(
+            h,
+            w,
+            d,
+            p,
+            p,
+            p,
+            p,
+            p,
+            p,
+            dtype=torch.bool,
+            device=self.relative_position_params.device,
+        )
+        if self.type == "W":
             return attn_mask
 
         s = p - shift
-        attn_mask[-1, :,  :, :s, :,  :,  s:, :,  :] = True
-        attn_mask[-1, :,  :, s:, :,  :,  :s, :,  :] = True
-        attn_mask[:, -1,  :, :, :s,  :,  :, s:,  :] = True
-        attn_mask[:, -1,  :, :, s:,  :,  :, :s,  :] = True
-        attn_mask[:,  :, -1, :,  :, :s,  :,  :, s:] = True
-        attn_mask[:,  :, -1, :,  :, s:,  :,  :, :s] = True
-        attn_mask = rearrange(attn_mask, 'w1 w2 w3 p1 p2 p3 p4 p5 p6 -> 1 1 (w1 w2 w3) (p1 p2 p3) (p4 p5 p6)')
-        #print(attn_mask)
-        #exit()
+        attn_mask[-1, :, :, :s, :, :, s:, :, :] = True
+        attn_mask[-1, :, :, s:, :, :, :s, :, :] = True
+        attn_mask[:, -1, :, :, :s, :, :, s:, :] = True
+        attn_mask[:, -1, :, :, s:, :, :, :s, :] = True
+        attn_mask[:, :, -1, :, :, :s, :, :, s:] = True
+        attn_mask[:, :, -1, :, :, s:, :, :, :s] = True
+        attn_mask = rearrange(
+            attn_mask,
+            "w1 w2 w3 p1 p2 p3 p4 p5 p6 -> 1 1 (w1 w2 w3) (p1 p2 p3) (p4 p5 p6)",
+        )
+        # print(attn_mask)
+        # exit()
         return attn_mask
 
     def forward(self, x):
-        """ Forward pass of Window Multi-head Self-attention module.
+        """Forward pass of Window Multi-head Self-attention module.
         Args:
             x: input tensor with shape of [b h w d c];
-            attn_mask: attention mask, fill -inf where the value is True; 
+            attn_mask: attention mask, fill -inf where the value is True;
         Returns:
             output: tensor shape [b h w d c]
         """
-        if self.type!='W': x = torch.roll(x, shifts=(-(self.window_size//2), -(self.window_size//2), -(self.window_size//2)), dims=(1,2,3))
-        x = rearrange(x, 'b (w1 p1) (w2 p2) (w3 p3) c -> b w1 w2 w3 p1 p2 p3 c', p1=self.window_size, p2=self.window_size, p3=self.window_size)
+        if self.type != "W":
+            x = torch.roll(
+                x,
+                shifts=(
+                    -(self.window_size // 2),
+                    -(self.window_size // 2),
+                    -(self.window_size // 2),
+                ),
+                dims=(1, 2, 3),
+            )
+        x = rearrange(
+            x,
+            "b (w1 p1) (w2 p2) (w3 p3) c -> b w1 w2 w3 p1 p2 p3 c",
+            p1=self.window_size,
+            p2=self.window_size,
+            p3=self.window_size,
+        )
         h_windows = x.size(1)
         w_windows = x.size(2)
         d_windows = x.size(3)
         # square validation
         assert h_windows == w_windows == d_windows
 
-        x = rearrange(x, 'b w1 w2 w3 p1 p2 p3 c -> b (w1 w2 w3) (p1 p2 p3) c', p1=self.window_size, p2=self.window_size, p3=self.window_size)
+        x = rearrange(
+            x,
+            "b w1 w2 w3 p1 p2 p3 c -> b (w1 w2 w3) (p1 p2 p3) c",
+            p1=self.window_size,
+            p2=self.window_size,
+            p3=self.window_size,
+        )
 
         qkv = self.embedding_layer(x)
 
-        q, k, v = rearrange(qkv, 'b nw np (threeh c) -> threeh b nw np c', c=self.head_dim).chunk(3, dim=0)
-        sim = torch.einsum('hbwpc,hbwqc->hbwpq', q, k) * self.scale
+        q, k, v = rearrange(
+            qkv, "b nw np (threeh c) -> threeh b nw np c", c=self.head_dim
+        ).chunk(3, dim=0)
+        sim = torch.einsum("hbwpc,hbwqc->hbwpq", q, k) * self.scale
         # Adding learnable relative embedding
-        sim = sim + rearrange(self.relative_position_params[:, self.relation[:,:,0].long(), self.relation[:,:,1].long(), self.relation[:,:,2].long()], 'h p q -> h 1 1 p q')
+        sim = sim + rearrange(
+            self.relative_position_params[
+                :,
+                self.relation[:, :, 0].long(),
+                self.relation[:, :, 1].long(),
+                self.relation[:, :, 2].long(),
+            ],
+            "h p q -> h 1 1 p q",
+        )
         # Using Attn Mask to distinguish different subwindows.
-        if self.type != 'W':
-            attn_mask = self.generate_mask(h_windows, w_windows, d_windows, self.window_size, shift=self.window_size//2)
+        if self.type != "W":
+            attn_mask = self.generate_mask(
+                h_windows,
+                w_windows,
+                d_windows,
+                self.window_size,
+                shift=self.window_size // 2,
+            )
             sim = sim.masked_fill_(attn_mask, float("-inf"))
 
         probs = nn.functional.softmax(sim, dim=-1)
-        output = torch.einsum('hbwij,hbwjc->hbwic', probs, v)
-        output = rearrange(output, 'h b w p c -> b w p (h c)')
+        output = torch.einsum("hbwij,hbwjc->hbwic", probs, v)
+        output = rearrange(output, "h b w p c -> b w p (h c)")
         output = self.linear(output)
-        output = rearrange(output, 'b (w1 w2 w3) (p1 p2 p3) c -> b (w1 p1) (w2 p2) (w3 p3) c', w1=h_windows, w2=w_windows, w3=d_windows, p1=self.window_size, p2=self.window_size, p3=self.window_size)
+        output = rearrange(
+            output,
+            "b (w1 w2 w3) (p1 p2 p3) c -> b (w1 p1) (w2 p2) (w3 p3) c",
+            w1=h_windows,
+            w2=w_windows,
+            w3=d_windows,
+            p1=self.window_size,
+            p2=self.window_size,
+            p3=self.window_size,
+        )
 
-        if self.type!='W': output = torch.roll(output, shifts=(self.window_size//2, self.window_size//2, self.window_size//2), dims=(1,2,3))
+        if self.type != "W":
+            output = torch.roll(
+                output,
+                shifts=(
+                    self.window_size // 2,
+                    self.window_size // 2,
+                    self.window_size // 2,
+                ),
+                dims=(1, 2, 3),
+            )
         return output
 
-    '''
+    """
     def relative_embedding(self):
         cord = torch.tensor(np.array([[i, j, k] for i in range(self.window_size) for j in range(self.window_size) for k in range(self.window_size)]))
         # TODO
         relation = cord[:, None, :] - cord[None, :, :] + self.window_size -1
         # negative is allowed
         return self.relative_position_params[:, relation[:,:,0].long(), relation[:,:,1].long()]
-    '''
+    """
 
 
 class Block(nn.Module):
-    def __init__(self, input_dim, output_dim, head_dim, window_size, drop_path, type='W', input_resolution=None):
-        """ SwinTransformer Block
-        """
+    def __init__(
+        self,
+        input_dim,
+        output_dim,
+        head_dim,
+        window_size,
+        drop_path,
+        type="W",
+        input_resolution=None,
+    ):
+        """SwinTransformer Block"""
         super(Block, self).__init__()
         self.input_dim = input_dim
         self.output_dim = output_dim
-        assert type in ['W', 'SW']
+        assert type in ["W", "SW"]
         self.type = type
         if input_resolution <= window_size:
-            self.type = 'W'
+            self.type = "W"
 
         # print("Block Initial Type: {}, drop_path_rate:{:.6f}".format(self.type, drop_path))
         self.ln1 = nn.LayerNorm(input_dim)
         self.msa = WMSA(input_dim, input_dim, head_dim, window_size, self.type)
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.ln2 = nn.LayerNorm(input_dim)
         self.mlp = nn.Sequential(
             nn.Linear(input_dim, 4 * input_dim),
@@ -143,9 +247,17 @@ class Block(nn.Module):
 
 
 class ConvTransBlock(nn.Module):
-    def __init__(self, conv_dim, trans_dim, head_dim, window_size, drop_path, type='W', input_resolution=None):
-        """ SwinTransformer and Conv Block
-        """
+    def __init__(
+        self,
+        conv_dim,
+        trans_dim,
+        head_dim,
+        window_size,
+        drop_path,
+        type="W",
+        input_resolution=None,
+    ):
+        """SwinTransformer and Conv Block"""
         super(ConvTransBlock, self).__init__()
         self.conv_dim = conv_dim
         self.trans_dim = trans_dim
@@ -155,32 +267,55 @@ class ConvTransBlock(nn.Module):
         self.type = type
         self.input_resolution = input_resolution
 
-        assert self.type in ['W', 'SW']
+        assert self.type in ["W", "SW"]
         if self.input_resolution <= self.window_size:
-            self.type = 'W'
+            self.type = "W"
 
-        self.trans_block = Block(self.trans_dim, self.trans_dim, self.head_dim, self.window_size, self.drop_path, self.type, self.input_resolution)
-        self.conv1_1 = nn.Conv3d(self.conv_dim+self.trans_dim, self.conv_dim+self.trans_dim, 1, 1, 0, bias=True)
-        self.conv1_2 = nn.Conv3d(self.conv_dim+self.trans_dim, self.conv_dim+self.trans_dim, 1, 1, 0, bias=True)
+        self.trans_block = Block(
+            self.trans_dim,
+            self.trans_dim,
+            self.head_dim,
+            self.window_size,
+            self.drop_path,
+            self.type,
+            self.input_resolution,
+        )
+        self.conv1_1 = nn.Conv3d(
+            self.conv_dim + self.trans_dim,
+            self.conv_dim + self.trans_dim,
+            1,
+            1,
+            0,
+            bias=True,
+        )
+        self.conv1_2 = nn.Conv3d(
+            self.conv_dim + self.trans_dim,
+            self.conv_dim + self.trans_dim,
+            1,
+            1,
+            0,
+            bias=True,
+        )
 
         self.conv_block = nn.Sequential(
-                nn.Conv3d(self.conv_dim, self.conv_dim, 3, 1, 1, bias=False),
-                FilterResponseNorm3d(self.conv_dim),
-                nn.Conv3d(self.conv_dim, self.conv_dim, 3, 1, 1, bias=False),
-                FilterResponseNorm3d(self.conv_dim),
-
-                # old version
-                #nn.Conv3d(self.conv_dim, self.conv_dim, 3, 1, 1, bias=False),
-                #nn.ReLU(True),
-                #nn.Conv3d(self.conv_dim, self.conv_dim, 3, 1, 1, bias=False),
-                )
+            nn.Conv3d(self.conv_dim, self.conv_dim, 3, 1, 1, bias=False),
+            FilterResponseNorm3d(self.conv_dim),
+            nn.Conv3d(self.conv_dim, self.conv_dim, 3, 1, 1, bias=False),
+            FilterResponseNorm3d(self.conv_dim),
+            # old version
+            # nn.Conv3d(self.conv_dim, self.conv_dim, 3, 1, 1, bias=False),
+            # nn.ReLU(True),
+            # nn.Conv3d(self.conv_dim, self.conv_dim, 3, 1, 1, bias=False),
+        )
 
     def forward(self, x):
-        conv_x, trans_x = torch.split(self.conv1_1(x), (self.conv_dim, self.trans_dim), dim=1)
-        conv_x  = self.conv_block(conv_x) + conv_x
-        trans_x = Rearrange('b c h w d -> b h w d c')(trans_x)
+        conv_x, trans_x = torch.split(
+            self.conv1_1(x), (self.conv_dim, self.trans_dim), dim=1
+        )
+        conv_x = self.conv_block(conv_x) + conv_x
+        trans_x = Rearrange("b c h w d -> b h w d c")(trans_x)
         trans_x = self.trans_block(trans_x)
-        trans_x = Rearrange('b h w d c -> b c h w d')(trans_x)
+        trans_x = Rearrange("b h w d c -> b c h w d")(trans_x)
         res = self.conv1_2(torch.cat((conv_x, trans_x), dim=1))
         x = x + res
 
@@ -188,16 +323,25 @@ class ConvTransBlock(nn.Module):
 
 
 class SCUNet(nn.Module):
-
-    def __init__(self, in_nc=1, config=[2,2,2,2,2,2,2], dim=32, drop_path_rate=0.2, input_resolution=48, head_dim=16, window_size=3, n_classes=1):
+    def __init__(
+        self,
+        in_nc=1,
+        config=[2, 2, 2, 2, 2, 2, 2],
+        dim=32,
+        drop_path_rate=0.2,
+        input_resolution=48,
+        head_dim=16,
+        window_size=3,
+        n_classes=1,
+    ):
         super(SCUNet, self).__init__()
         self.config = config
         self.dim = dim
         self.head_dim = head_dim
         self.window_size = window_size
 
-        #down = nn.MaxPool3d(kernel_size=2, stride=2)
-        #up = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=True)
+        # down = nn.MaxPool3d(kernel_size=2, stride=2)
+        # up = nn.Upsample(scale_factor=2, mode='trilinear', align_corners=True)
 
         # drop path rate for each layer
         dpr = [x.item() for x in torch.linspace(0, drop_path_rate, sum(config))]
@@ -205,41 +349,111 @@ class SCUNet(nn.Module):
         self.m_head = [nn.Conv3d(in_nc, dim, 3, 1, 1, bias=False)]
 
         begin = 0
-        self.m_down1 = [ConvTransBlock(dim//2, dim//2, self.head_dim, self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW', input_resolution) 
-                      for i in range(config[0])] + \
-                      [nn.Conv3d(dim, 2*dim, 2, 2, 0, bias=False)]
+        self.m_down1 = [
+            ConvTransBlock(
+                dim // 2,
+                dim // 2,
+                self.head_dim,
+                self.window_size,
+                dpr[i + begin],
+                "W" if not i % 2 else "SW",
+                input_resolution,
+            )
+            for i in range(config[0])
+        ] + [nn.Conv3d(dim, 2 * dim, 2, 2, 0, bias=False)]
 
         begin += config[0]
-        self.m_down2 = [ConvTransBlock(dim, dim, self.head_dim, self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW', input_resolution//2)
-                      for i in range(config[1])] + \
-                      [nn.Conv3d(2*dim, 4*dim, 2, 2, 0, bias=False)]
+        self.m_down2 = [
+            ConvTransBlock(
+                dim,
+                dim,
+                self.head_dim,
+                self.window_size,
+                dpr[i + begin],
+                "W" if not i % 2 else "SW",
+                input_resolution // 2,
+            )
+            for i in range(config[1])
+        ] + [nn.Conv3d(2 * dim, 4 * dim, 2, 2, 0, bias=False)]
 
         begin += config[1]
-        self.m_down3 = [ConvTransBlock(2*dim, 2*dim, self.head_dim, self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW',input_resolution//4)
-                      for i in range(config[2])] + \
-                      [nn.Conv3d(4*dim, 8*dim, 2, 2, 0, bias=False)]
+        self.m_down3 = [
+            ConvTransBlock(
+                2 * dim,
+                2 * dim,
+                self.head_dim,
+                self.window_size,
+                dpr[i + begin],
+                "W" if not i % 2 else "SW",
+                input_resolution // 4,
+            )
+            for i in range(config[2])
+        ] + [nn.Conv3d(4 * dim, 8 * dim, 2, 2, 0, bias=False)]
 
         begin += config[2]
-        self.m_body = [ConvTransBlock(4*dim, 4*dim, self.head_dim, self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW', input_resolution//8)
-                    for i in range(config[3])]
+        self.m_body = [
+            ConvTransBlock(
+                4 * dim,
+                4 * dim,
+                self.head_dim,
+                self.window_size,
+                dpr[i + begin],
+                "W" if not i % 2 else "SW",
+                input_resolution // 8,
+            )
+            for i in range(config[3])
+        ]
 
         begin += config[3]
-        self.m_up3 = [nn.ConvTranspose3d(8*dim, 4*dim, 2, 2, 0, bias=False),] + \
-                      [ConvTransBlock(2*dim, 2*dim, self.head_dim, self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW',input_resolution//4)
-                      for i in range(config[4])]
-                      
+        self.m_up3 = [
+            nn.ConvTranspose3d(8 * dim, 4 * dim, 2, 2, 0, bias=False),
+        ] + [
+            ConvTransBlock(
+                2 * dim,
+                2 * dim,
+                self.head_dim,
+                self.window_size,
+                dpr[i + begin],
+                "W" if not i % 2 else "SW",
+                input_resolution // 4,
+            )
+            for i in range(config[4])
+        ]
+
         begin += config[4]
-        self.m_up2 = [nn.ConvTranspose3d(4*dim, 2*dim, 2, 2, 0, bias=False),] + \
-                      [ConvTransBlock(dim, dim, self.head_dim, self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW', input_resolution//2)
-                      for i in range(config[5])]
-                      
+        self.m_up2 = [
+            nn.ConvTranspose3d(4 * dim, 2 * dim, 2, 2, 0, bias=False),
+        ] + [
+            ConvTransBlock(
+                dim,
+                dim,
+                self.head_dim,
+                self.window_size,
+                dpr[i + begin],
+                "W" if not i % 2 else "SW",
+                input_resolution // 2,
+            )
+            for i in range(config[5])
+        ]
+
         begin += config[5]
-        self.m_up1 = [nn.ConvTranspose3d(2*dim, dim, 2, 2, 0, bias=False),] + \
-                    [ConvTransBlock(dim//2, dim//2, self.head_dim, self.window_size, dpr[i+begin], 'W' if not i%2 else 'SW', input_resolution) 
-                      for i in range(config[6])]
+        self.m_up1 = [
+            nn.ConvTranspose3d(2 * dim, dim, 2, 2, 0, bias=False),
+        ] + [
+            ConvTransBlock(
+                dim // 2,
+                dim // 2,
+                self.head_dim,
+                self.window_size,
+                dpr[i + begin],
+                "W" if not i % 2 else "SW",
+                input_resolution,
+            )
+            for i in range(config[6])
+        ]
 
         self.m_tail = [nn.Conv3d(dim, n_classes, 3, 1, 1, bias=False)]
-        #self.m_tail = [FilterResponseNorm3d(dim),
+        # self.m_tail = [FilterResponseNorm3d(dim),
         #               nn.Conv3d(dim, n_classes, 3, 1, 1, bias=False)]
 
         self.m_head = nn.Sequential(*self.m_head)
@@ -250,36 +464,34 @@ class SCUNet(nn.Module):
         self.m_up3 = nn.Sequential(*self.m_up3)
         self.m_up2 = nn.Sequential(*self.m_up2)
         self.m_up1 = nn.Sequential(*self.m_up1)
-        self.m_tail = nn.Sequential(*self.m_tail)  
-        #self.apply(self._init_weights)
+        self.m_tail = nn.Sequential(*self.m_tail)
+        # self.apply(self._init_weights)
 
     def forward(self, x0):
-
-        #h, w, d = x0.size()[-3:]
-        #paddingH = int(np.ceil(h/32)*32-h)
-        #paddingW = int(np.ceil(w/32)*32-w)
-        #paddingD = int(np.ceil(d/32)*32-d)
-        #x0 = nn.ReplicationPad3d((0, paddingD, 0, paddingW, 0, paddingH))(x0)
-        #print(x0.shape)
+        # h, w, d = x0.size()[-3:]
+        # paddingH = int(np.ceil(h/32)*32-h)
+        # paddingW = int(np.ceil(w/32)*32-w)
+        # paddingD = int(np.ceil(d/32)*32-d)
+        # x0 = nn.ReplicationPad3d((0, paddingD, 0, paddingW, 0, paddingH))(x0)
+        # print(x0.shape)
 
         x1 = self.m_head(x0)
         x2 = self.m_down1(x1)
         x3 = self.m_down2(x2)
         x4 = self.m_down3(x3)
         x = self.m_body(x4)
-        x = self.m_up3(x+x4)
-        x = self.m_up2(x+x3)
-        x = self.m_up1(x+x2)
-        x = self.m_tail(x+x1)
+        x = self.m_up3(x + x4)
+        x = self.m_up2(x + x3)
+        x = self.m_up1(x + x2)
+        x = self.m_tail(x + x1)
 
-        #x = x[..., :h, :w, :d]
-        
+        # x = x[..., :h, :w, :d]
+
         return x
-
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            trunc_normal_(m.weight, std=0.02)
             if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -287,14 +499,12 @@ class SCUNet(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
 
-
-if __name__ == '__main__':
-
+if __name__ == "__main__":
     # torch.cuda.empty_cache()
-    img_size= 48 # w_size * 8 / w_size * 16
+    img_size = 48  # w_size * 8 / w_size * 16
     w_size = 6
     dim = 32
-    n_heads = 16 # n_heads <= dim/2 
+    n_heads = 16  # n_heads <= dim/2
     config = [2, 2, 2, 2, 2, 2, 2]
     H = img_size
     W = img_size
@@ -302,12 +512,23 @@ if __name__ == '__main__':
     C = 1
     B = 1
 
-    #model = SCUNet().cuda()
-    import os 
+    # model = SCUNet().cuda()
+    import os
+
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
     os.environ["CUDA_VISIBLE_DEVICES"] = "0"
-    model = SCUNet(in_nc=C, config=config, dim=dim, drop_path_rate=0.0, input_resolution=img_size, head_dim=n_heads, window_size=w_size, n_classes=2).cuda()
+    model = SCUNet(
+        in_nc=C,
+        config=config,
+        dim=dim,
+        drop_path_rate=0.0,
+        input_resolution=img_size,
+        head_dim=n_heads,
+        window_size=w_size,
+        n_classes=2,
+    ).cuda()
 
     from torchsummary import summary
+
     summary(model, input_size=(C, H, W, D))
-    #cube = torch.rand(B, H, W, D, C)
+    # cube = torch.rand(B, H, W, D, C)
